@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import logging
 import random
+import sys
 import yaml
 from typing import Annotated, Any, Dict, List, Optional
 from dataclasses import dataclass, field
@@ -587,5 +588,16 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print(f"❌ Error: Model configuration file '{args.model_config}' not found.")
         print("Please copy model_config_template.yml to model_config.yml and add your API key.")
+        print("\n💡 Tip: To see how this example works without an API key, run:")
+        print("    python demo.py")
+        sys.exit(1)
     except Exception as e:
-        print(f"❌ Error: {e}")
+        if "api_key" in str(e).lower() or "authentication" in str(e).lower() or "connection" in str(e).lower():
+            print(f"❌ Error: {e}")
+            print("\n💡 This appears to be an API key or connection issue.")
+            print("To test the collaboration system without an API key, run:")
+            print("    python demo.py")
+            sys.exit(1)
+        else:
+            print(f"❌ Error: {e}")
+            raise
