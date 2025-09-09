@@ -17,7 +17,6 @@ import configparser
 import logging
 import random
 import sys
-import yaml
 from typing import Annotated, Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
