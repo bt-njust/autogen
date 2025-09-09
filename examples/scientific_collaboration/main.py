@@ -88,19 +88,22 @@ class CollaborationMessage(BaseModel):
 class CollaborationState:
     """Manages the state of the scientific collaboration."""
     
-    def __init__(self):
+    def __init__(self, max_topics: int = 8):
         self.researchers: Dict[str, ResearcherProfile] = {}
         self.topics: Dict[str, ResearchTopic] = {}
         self.discussion_round = 0
         self.consensus_reached = False
         self.selected_topics: List[str] = []
+        self.max_topics = max_topics
         
     def add_researcher(self, profile: ResearcherProfile):
         """Add a researcher to the collaboration."""
         self.researchers[profile.name] = profile
         
-    def add_topic(self, topic: ResearchTopic) -> str:
-        """Add a research topic and return its ID."""
+    def add_topic(self, topic: ResearchTopic) -> Optional[str]:
+        """Add a research topic and return its ID, or None if limit reached."""
+        if len(self.topics) >= self.max_topics:
+            return None
         topic_id = f"topic_{len(self.topics) + 1}"
         self.topics[topic_id] = topic
         return topic_id
@@ -110,6 +113,10 @@ class CollaborationState:
         if topic_id in self.topics and voter not in self.topics[topic_id].supporters:
             self.topics[topic_id].votes += 1
             self.topics[topic_id].supporters.append(voter)
+            
+    def get_remaining_topic_slots(self) -> int:
+        """Get the number of remaining topic slots available."""
+        return max(0, self.max_topics - len(self.topics))
             
     def get_top_topics(self, n: int = 3) -> List[ResearchTopic]:
         """Get the top N topics by votes."""
@@ -263,6 +270,10 @@ def propose_topic(
     required_expertise: Annotated[str, "Comma-separated list of expertise areas needed"],
 ) -> Annotated[str, "Result of the topic proposal"]:
     """Propose a new research topic for collaboration."""
+    # Check if we've reached the maximum number of topics
+    if len(collaboration_state.topics) >= collaboration_state.max_topics:
+        return f"Cannot propose new topic '{title}'. Maximum topic limit ({collaboration_state.max_topics}) has been reached. No more topics can be proposed."
+    
     expertise_list = [exp.strip() for exp in required_expertise.split(",")]
     topic = ResearchTopic(
         title=title,
@@ -272,13 +283,20 @@ def propose_topic(
     )
     topic_id = collaboration_state.add_topic(topic)
     
+    if topic_id is None:
+        # This shouldn't happen given the check above, but defensive programming
+        return f"Cannot propose new topic '{title}'. Maximum topic limit ({collaboration_state.max_topics}) has been reached."
+    
+    remaining_slots = collaboration_state.get_remaining_topic_slots()
+    
     print(f"\n🔬 NEW TOPIC PROPOSED by {researcher_name}")
     print(f"📋 Title: {title}")
     print(f"📝 Description: {description}")
     print(f"🎯 Required expertise: {', '.join(expertise_list)}")
     print(f"🆔 Topic ID: {topic_id}")
+    print(f"📊 Remaining topic slots: {remaining_slots}")
     
-    return f"Successfully proposed topic '{title}' (ID: {topic_id}). Other researchers can now vote on it."
+    return f"Successfully proposed topic '{title}' (ID: {topic_id}). {remaining_slots} topic slots remaining. Other researchers can now vote on it."
 
 
 def vote_for_topic(
@@ -341,7 +359,8 @@ def get_collaboration_status() -> Annotated[str, "Current status of the collabor
     """Get the current status of the collaboration process."""
     status = f"Collaboration Status:\n"
     status += f"👥 Researchers: {len(collaboration_state.researchers)}\n"
-    status += f"📋 Topics proposed: {len(collaboration_state.topics)}\n"
+    status += f"📋 Topics proposed: {len(collaboration_state.topics)}/{collaboration_state.max_topics}\n"
+    status += f"📊 Remaining topic slots: {collaboration_state.get_remaining_topic_slots()}\n"
     status += f"🔄 Discussion round: {collaboration_state.discussion_round}\n"
     
     if collaboration_state.topics:
