@@ -191,7 +191,7 @@ def demonstrate_collaboration():
     print("• Topic proposals with detailed descriptions and requirements")
     print("• Voting system with reasoning and consensus building")
     print("• Real-time tracking of collaboration status and progress")
-    print("\nTo run with real AI agents, set up your OpenAI API key in model_config.yml")
+    print("\nTo run with real AI agents, set up your configuration in .server_deployed_LLMs")
     print("and run: python main.py")
 
 
