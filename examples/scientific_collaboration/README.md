@@ -35,25 +35,37 @@ pip install "autogen-ext[openai,azure]" "pyyaml"
 
 ### Configuration
 
-1. Copy the model configuration template:
+1. Create the configuration file:
    ```bash
-   cp model_config_template.yml model_config.yml
+   cp .server_deployed_LLMs.template .server_deployed_LLMs
    ```
 
-2. Edit `model_config.yml` and replace `REPLACE_WITH_YOUR_API_KEY` with your actual OpenAI API key.
+2. Edit `.server_deployed_LLMs` and replace `YOUR_API_KEY_HERE` with your actual API key for the desired endpoint.
+
+The configuration file format is:
+```ini
+[ali_official]
+base_url = https://dashscope.aliyuncs.com/compatible-mode/v1
+api_key = YOUR_API_KEY_HERE
+
+[openai_compatible]
+base_url = https://api.openai.com/v1
+api_key = YOUR_OPENAI_API_KEY_HERE
+```
 
 ### Usage
 
 Run the full scientific collaboration simulation with AI agents:
 
 ```bash
-python main.py --model-config model_config.yml
+python main.py --config-file .server_deployed_LLMs --config-section ali_official
 ```
 
 Optional arguments:
 - `--verbose`: Enable detailed logging
 - `--num-rounds`: Number of discussion rounds (default: 4)
-- `--model-config`: Path to model configuration file
+- `--config-file`: Path to configuration file (default: .server_deployed_LLMs)
+- `--config-section`: Configuration section to use (default: ali_official)
 
 ## Example Output
 

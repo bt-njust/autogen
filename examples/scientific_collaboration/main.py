@@ -13,12 +13,14 @@ The simulation includes:
 
 import argparse
 import asyncio
+import configparser
 import logging
 import random
 import sys
 import yaml
 from typing import Annotated, Any, Dict, List, Optional
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from autogen_core import (
     AgentId,
@@ -36,9 +38,11 @@ from autogen_core.models import (
     LLMMessage,
     SystemMessage,
     UserMessage,
+    ModelFamily,
 )
 from autogen_core.tool_agent import ToolAgent, tool_agent_caller_loop
 from autogen_core.tools import FunctionTool, Tool, ToolSchema
+from autogen_ext.models.openai import OpenAIChatCompletionClient
 from pydantic import BaseModel
 
 
@@ -111,6 +115,52 @@ class CollaborationState:
         """Get the top N topics by votes."""
         sorted_topics = sorted(self.topics.values(), key=lambda t: t.votes, reverse=True)
         return sorted_topics[:n]
+
+
+def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official") -> OpenAIChatCompletionClient:
+    """Create model client using configparser approach from the provided configuration."""
+    config = configparser.ConfigParser()
+    
+    # Try reading config file from multiple possible locations
+    config_paths = [
+        Path(config_file),
+        Path.home() / 'project/pkg2.0/code' / config_file,
+        Path(__file__).parent / config_file
+    ]
+    
+    config_path = None
+    for path in config_paths:
+        if path.exists():
+            config_path = path
+            break
+    
+    if config_path is None:
+        raise FileNotFoundError(f"Configuration file {config_file} not found in any of: {config_paths}")
+    
+    config.read(config_path)
+    
+    if config_section not in config:
+        raise ValueError(f"Configuration section '{config_section}' not found in {config_path}")
+    
+    base_url = config[config_section]['base_url']
+    api_key = config[config_section]['api_key']
+    
+    model_info = {
+        'vision': False,
+        'function_calling': True,
+        'family': ModelFamily.UNKNOWN,
+        'structured_output': True,
+        'json_output': True  # Starting in v0.4.7, the required fields are enforced.
+    }
+
+    model_client = OpenAIChatCompletionClient(
+        model="qwen-max",
+        base_url=base_url,
+        api_key=api_key,
+        model_info=model_info
+    )
+    
+    return model_client
 
 
 # Global collaboration state
@@ -496,7 +546,7 @@ async def run_collaboration_round(
         await asyncio.sleep(1)
 
 
-async def main(model_config: Dict[str, Any], num_rounds: int = 3) -> None:
+async def main(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official", num_rounds: int = 3) -> None:
     """Main entry point for the scientific collaboration simulation."""
     
     print("🧪 SCIENTIFIC COLLABORATION SIMULATION")
@@ -505,9 +555,9 @@ async def main(model_config: Dict[str, Any], num_rounds: int = 3) -> None:
     print("where multiple researchers discuss and select joint research topics.")
     print()
     
-    # Initialize runtime and model
+    # Initialize runtime and model using new configuration approach
     runtime = SingleThreadedAgentRuntime()
-    model_client = ChatCompletionClient.load_component(model_config)
+    model_client = create_model_client_from_config(config_file, config_section)
     
     # Set up the collaboration
     await setup_collaboration(runtime, model_client)
@@ -568,7 +618,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a scientific collaboration simulation.")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging.")
     parser.add_argument(
-        "--model-config", type=str, help="Path to the model configuration file.", default="model_config.yml"
+        "--config-file", type=str, help="Path to the model configuration file.", default=".server_deployed_LLMs"
+    )
+    parser.add_argument(
+        "--config-section", type=str, help="Configuration section to use.", default="ali_official"
     )
     parser.add_argument(
         "--num-rounds", type=int, help="Number of discussion rounds.", default=4
@@ -582,12 +635,10 @@ if __name__ == "__main__":
         logging.getLogger("autogen_core").addHandler(handler)
 
     try:
-        with open(args.model_config, "r") as f:
-            model_config = yaml.safe_load(f)
-        asyncio.run(main(model_config, args.num_rounds))
-    except FileNotFoundError:
-        print(f"❌ Error: Model configuration file '{args.model_config}' not found.")
-        print("Please copy model_config_template.yml to model_config.yml and add your API key.")
+        asyncio.run(main(args.config_file, args.config_section, args.num_rounds))
+    except FileNotFoundError as e:
+        print(f"❌ Error: {e}")
+        print(f"Please ensure the configuration file '{args.config_file}' exists and contains the section '{args.config_section}'.")
         print("\n💡 Tip: To see how this example works without an API key, run:")
         print("    python demo.py")
         sys.exit(1)

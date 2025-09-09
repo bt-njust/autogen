@@ -1,0 +1,11 @@
+[ali_official]
+base_url = https://dashscope.aliyuncs.com/compatible-mode/v1
+api_key = YOUR_API_KEY_HERE
+
+[openai_compatible]
+base_url = https://api.openai.com/v1
+api_key = YOUR_OPENAI_API_KEY_HERE
+
+[custom_endpoint]
+base_url = YOUR_BASE_URL_HERE
+api_key = YOUR_API_KEY_HERE
