@@ -1,0 +1,10 @@
+# Model configuration files with API keys
+model_config.yml
+
+# Logs
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
