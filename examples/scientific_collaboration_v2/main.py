@@ -391,6 +391,7 @@ def get_collaboration_status() -> Annotated[str, "Current status of the collabor
     return status
 
 
+# If your scenario allows all agents to publish and subscribe to all broadcasted messages, use DefaultTopicId and default_subscription() to decorate your agent classes.
 @default_subscription
 class ResearcherAgent(RoutedAgent):
     """Agent representing a researcher in the enhanced collaboration."""
@@ -408,7 +409,9 @@ class ResearcherAgent(RoutedAgent):
         self._model_client = model_client
         self._model_context = model_context
         self._tool_schema = tool_schema
-        self._tool_agent_id = AgentId(tool_agent_type, self.id.key)
+        self._tool_agent_id = AgentId(tool_agent_type, self.id.key) # Agent ID uniquely identifies an agent instance within an agent runtime – including distributed runtime. It is the “address” of the agent instance for receiving messages. It has two components: agent type and agent key. The agent type is not an agent class. It associates an agent with a specific factory function, which produces instances of agents of the same agent type. For example, different factory functions can produce the same agent class but with different constructor parameters. The agent key is an instance identifier for the given agent type. Agent IDs can be converted to and from strings. the format of this string is:"Agent_Type/Agent_Key" --> this is why you found 'Researcher_Prof_Chen_001/default' in the logs (does this mean every agent has a agent type?)
+        # In a multi-agent application, agent types are typically defined directly by the application, i.e., they are defined in the application code. On the other hand, agent keys are typically generated given messages delivered to the agents, i.e., they are defined by the application data.
+        # Because the runtime manages the lifecycle of agents, an AgentId is only used to communicate with the agent or retrieve its metadata (e.g., description).
         self._message_count = 0  # Track messages to prevent endless loops
         self._max_messages_per_round = 5
         
