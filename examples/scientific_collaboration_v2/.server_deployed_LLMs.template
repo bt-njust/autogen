@@ -1,0 +1,25 @@
+# Configuration Template for Scientific Collaboration V2
+
+# Copy this file to .server_deployed_LLMs in the same directory as main.py
+# Uncomment and fill in your actual API configuration
+
+[ali_official]
+# base_url = https://your-api-endpoint.com/v1
+# api_key = your-api-key-here
+
+[openai_official]
+# base_url = https://api.openai.com/v1
+# api_key = sk-your-openai-api-key-here
+
+[azure_openai]
+# base_url = https://your-resource.openai.azure.com/
+# api_key = your-azure-api-key
+# api_version = 2023-05-15
+
+# Usage:
+# python main.py --config-section ali_official
+# python main.py --config-section openai_official
+# python main.py --config-section azure_openai
+
+# For testing without API key:
+# python demo_standalone.py
