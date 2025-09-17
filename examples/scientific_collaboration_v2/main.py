@@ -181,7 +181,7 @@ def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", 
     # Try reading config file from multiple possible locations
     config_paths = [
         Path(config_file),
-        Path.home() / 'project/pkg2.0/code' / config_file,
+        Path.home() / 'project/src' / config_file,
         Path(__file__).parent / config_file
     ]
     
@@ -211,7 +211,7 @@ def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", 
     }
 
     model_client = OpenAIChatCompletionClient(
-        model="qwen-max",
+        model="qwen-plus",
         base_url=base_url,
         api_key=api_key,
         model_info=model_info
