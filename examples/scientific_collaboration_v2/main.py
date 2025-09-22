@@ -57,7 +57,7 @@ class TeamRole(Enum):
 
 
 class AcademicStage(Enum):
-    """Academic position hierarchy."""
+    """Academic stage hierarchy."""
     PROFESSOR = "professor"
     ASSOCIATE_PROFESSOR = "associate_professor"
     ASSISTANT_PROFESSOR = "assistant_professor"
@@ -89,9 +89,9 @@ class CollaborationHistory:
 
 @dataclass
 class ResearcherProfile:
-    """Enhanced researcher profile with team role and academic position."""
+    """Enhanced researcher profile with team role and academic stage."""
     name: str
-    academic_position: AcademicStage
+    academic_stage: AcademicStage
     team_role: TeamRole
     expertise: List[str]
     institution: str
@@ -294,7 +294,7 @@ def discuss_topic(
     print(f"💭 Reasoning: {reasoning}")
     
     if participant_profile:
-        print(f"👤 Role: {participant_profile.team_role.value} ({participant_profile.academic_position.value})")
+        print(f"👤 Role: {participant_profile.team_role.value} ({participant_profile.academic_stage.value})")
         print(f"📊 Current workload: {participant_profile.current_workload}")
     
     return f"Discussed '{topic.title}'. Interest: {interest_level}, Contribution: {contribution_level}. {reasoning}"
@@ -359,7 +359,7 @@ def get_researcher_profiles() -> Annotated[str, "Information about all researche
         
     profiles_info = "Team Member Profiles:\n\n"
     for name, profile in collaboration_state.researchers.items():
-        profiles_info += f"👤 {profile.name} | {profile.academic_position.value}\n"
+        profiles_info += f"👤 {profile.name} | {profile.academic_stage.value}\n"
         profiles_info += f"   🎭 Team role: {profile.team_role.value}\n"
         profiles_info += f"   🏛️ Institution: {profile.institution}\n"
         profiles_info += f"   🔬 Expertise: {', '.join(profile.expertise)}\n"
@@ -441,18 +441,18 @@ class ResearcherAgent(RoutedAgent):
             role_behavior = "As a newcomer to the team, you may have limited knowledge about team dynamics but bring fresh perspectives. You might receive topic assignments from seniors rather than proposing topics yourself."
 
         position_context = ""
-        if self.profile.academic_position == AcademicStage.PROFESSOR:
+        if self.profile.academic_stage == AcademicStage.PROFESSOR:
             position_context = "As a professor, you often have grant projects and can assign research directions to your team."
-        elif self.profile.academic_position == AcademicStage.POSTDOC:
+        elif self.profile.academic_stage == AcademicStage.POSTDOC:
             position_context = "As a postdoc, you have specialized skills and can take significant responsibility for research projects."
-        elif self.profile.academic_position == AcademicStage.PHD_CANDIDATE:
+        elif self.profile.academic_stage == AcademicStage.PHD_CANDIDATE:
             position_context = "As a PhD candidate, you may propose topics for your dissertation or receive assignments from professors."
 
-        return f"""You are {self.profile.name}, a {self.profile.academic_position.value} from {self.profile.institution}.
+        return f"""You are {self.profile.name}, a {self.profile.academic_stage.value} from {self.profile.institution}.
 
 ROLE & POSITION:
 - Team role: {self.profile.team_role.value}
-- Academic position: {self.profile.academic_position.value}
+- Academic stage: {self.profile.academic_stage.value}
 - Years in team: {self.profile.years_in_team}
 - Current workload: {self.profile.current_workload}
 
@@ -554,7 +554,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
     researchers = [
         ResearcherProfile(
             name="Prof_Chen_001",
-            academic_position=AcademicStage.PROFESSOR,
+            academic_stage=AcademicStage.PROFESSOR,
             team_role=TeamRole.LEADER,
             expertise=["Machine Learning", "Deep Learning", "Computer Vision"],
             institution="MIT",
@@ -573,7 +573,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Dr_Wilson_002",
-            academic_position=AcademicStage.ASSOCIATE_PROFESSOR,
+            academic_stage=AcademicStage.ASSOCIATE_PROFESSOR,
             team_role=TeamRole.CO_LEADER,
             expertise=["Data Science", "Statistical Analysis", "Big Data Analytics"],
             institution="Stanford University",
@@ -591,7 +591,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Dr_Garcia_003",
-            academic_position=AcademicStage.ASSISTANT_PROFESSOR,
+            academic_stage=AcademicStage.ASSISTANT_PROFESSOR,
             team_role=TeamRole.INCUMBENT,
             expertise=["Human-Computer Interaction", "UX Research", "Accessibility"],
             institution="UC Berkeley",
@@ -609,7 +609,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Dr_Kim_004",
-            academic_position=AcademicStage.POSTDOC,
+            academic_stage=AcademicStage.POSTDOC,
             team_role=TeamRole.INCUMBENT,
             expertise=["Computational Biology", "Bioinformatics", "Systems Biology"],
             institution="Harvard Medical School",
@@ -627,7 +627,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="PhD_Zhang_005",
-            academic_position=AcademicStage.PHD_CANDIDATE,
+            academic_stage=AcademicStage.PHD_CANDIDATE,
             team_role=TeamRole.NEWCOMER,
             expertise=["Natural Language Processing", "Text Mining"],
             institution="MIT",
@@ -644,7 +644,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Postdoc_Lee_006",
-            academic_position=AcademicStage.POSTDOC,
+            academic_stage=AcademicStage.POSTDOC,
             team_role=TeamRole.NEWCOMER,
             expertise=["Robotics", "Computer Vision", "AI Control"],
             institution="Stanford University",
@@ -684,7 +684,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
             ))
             
             # Most researchers can propose topics (except some newcomers)
-            if researcher_profile.team_role != TeamRole.NEWCOMER or researcher_profile.academic_position in [AcademicStage.POSTDOC]:
+            if researcher_profile.team_role != TeamRole.NEWCOMER or researcher_profile.academic_stage in [AcademicStage.POSTDOC]:
                 def propose_topic_for_researcher(title: str, description: str, source: str, required_expertise: str, priority_level: str = "medium") -> str:
                     return propose_topic(researcher_name, title, description, source, required_expertise, priority_level)
                 
@@ -780,7 +780,7 @@ async def run_collaboration_round(
     
     # Different prompts for different phases
     if phase == "introduction":
-        prompt = ("Please introduce yourself, highlighting your role in the team, academic position, expertise, "
+        prompt = ("Please introduce yourself, highlighting your role in the team, academic stage, expertise, "
                  "and current workload. Mention your collaboration history and suggest how you might contribute "
                  "to the team's research directions. Keep your introduction concise.")
     elif phase == "proposal":
@@ -852,7 +852,7 @@ async def main(config_file: str = ".server_deployed_LLMs", config_section: str =
     print("=" * 60)
     print("Enhanced academic research collaboration with:")
     print("• Team roles: leader, co-leader, incumbent, newcomer")
-    print("• Academic positions: professor, associate prof, assistant prof, postdoc, PhD")
+    print("• Academic stages: professor, associate prof, assistant prof, postdoc, PhD")
     print("• Discussion-based consensus (no voting)")
     print("• Topic sources and assignment mechanisms")
     print("• Improved asyncio handling and termination conditions")
