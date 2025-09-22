@@ -56,13 +56,15 @@ class TeamRole(Enum):
     NEWCOMER = "newcomer"  # 1-2 collaborations with current team
 
 
-class AcademicPosition(Enum):
+class AcademicStage(Enum):
     """Academic position hierarchy."""
     PROFESSOR = "professor"
     ASSOCIATE_PROFESSOR = "associate_professor"
     ASSISTANT_PROFESSOR = "assistant_professor"
     POSTDOC = "postdoc"
     PHD_CANDIDATE = "phd_candidate"
+    MASTER_STUDENT = "master_student"
+    UNKNOWN = "unknown"
 
 
 class TopicSource(Enum):
@@ -73,6 +75,7 @@ class TopicSource(Enum):
     EXPLORE_NEW_DIRECTIONS = "explore_new_directions"
     ASSIGNMENT_FROM_PROFESSOR = "assignment_from_professor"
     PHD_INITIATIVE = "phd_initiative"
+    UNKNOWN = "unknown"
 
 
 @dataclass
@@ -88,7 +91,7 @@ class CollaborationHistory:
 class ResearcherProfile:
     """Enhanced researcher profile with team role and academic position."""
     name: str
-    academic_position: AcademicPosition
+    academic_position: AcademicStage
     team_role: TeamRole
     expertise: List[str]
     institution: str
@@ -438,11 +441,11 @@ class ResearcherAgent(RoutedAgent):
             role_behavior = "As a newcomer to the team, you may have limited knowledge about team dynamics but bring fresh perspectives. You might receive topic assignments from seniors rather than proposing topics yourself."
 
         position_context = ""
-        if self.profile.academic_position == AcademicPosition.PROFESSOR:
+        if self.profile.academic_position == AcademicStage.PROFESSOR:
             position_context = "As a professor, you often have grant projects and can assign research directions to your team."
-        elif self.profile.academic_position == AcademicPosition.POSTDOC:
+        elif self.profile.academic_position == AcademicStage.POSTDOC:
             position_context = "As a postdoc, you have specialized skills and can take significant responsibility for research projects."
-        elif self.profile.academic_position == AcademicPosition.PHD_CANDIDATE:
+        elif self.profile.academic_position == AcademicStage.PHD_CANDIDATE:
             position_context = "As a PhD candidate, you may propose topics for your dissertation or receive assignments from professors."
 
         return f"""You are {self.profile.name}, a {self.profile.academic_position.value} from {self.profile.institution}.
@@ -551,7 +554,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
     researchers = [
         ResearcherProfile(
             name="Prof_Chen_001",
-            academic_position=AcademicPosition.PROFESSOR,
+            academic_position=AcademicStage.PROFESSOR,
             team_role=TeamRole.LEADER,
             expertise=["Machine Learning", "Deep Learning", "Computer Vision"],
             institution="MIT",
@@ -570,7 +573,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Dr_Wilson_002",
-            academic_position=AcademicPosition.ASSOCIATE_PROFESSOR,
+            academic_position=AcademicStage.ASSOCIATE_PROFESSOR,
             team_role=TeamRole.CO_LEADER,
             expertise=["Data Science", "Statistical Analysis", "Big Data Analytics"],
             institution="Stanford University",
@@ -588,7 +591,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Dr_Garcia_003",
-            academic_position=AcademicPosition.ASSISTANT_PROFESSOR,
+            academic_position=AcademicStage.ASSISTANT_PROFESSOR,
             team_role=TeamRole.INCUMBENT,
             expertise=["Human-Computer Interaction", "UX Research", "Accessibility"],
             institution="UC Berkeley",
@@ -606,7 +609,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Dr_Kim_004",
-            academic_position=AcademicPosition.POSTDOC,
+            academic_position=AcademicStage.POSTDOC,
             team_role=TeamRole.INCUMBENT,
             expertise=["Computational Biology", "Bioinformatics", "Systems Biology"],
             institution="Harvard Medical School",
@@ -624,7 +627,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="PhD_Zhang_005",
-            academic_position=AcademicPosition.PHD_CANDIDATE,
+            academic_position=AcademicStage.PHD_CANDIDATE,
             team_role=TeamRole.NEWCOMER,
             expertise=["Natural Language Processing", "Text Mining"],
             institution="MIT",
@@ -641,7 +644,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
         ),
         ResearcherProfile(
             name="Postdoc_Lee_006",
-            academic_position=AcademicPosition.POSTDOC,
+            academic_position=AcademicStage.POSTDOC,
             team_role=TeamRole.NEWCOMER,
             expertise=["Robotics", "Computer Vision", "AI Control"],
             institution="Stanford University",
@@ -681,7 +684,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
             ))
             
             # Most researchers can propose topics (except some newcomers)
-            if researcher_profile.team_role != TeamRole.NEWCOMER or researcher_profile.academic_position in [AcademicPosition.POSTDOC]:
+            if researcher_profile.team_role != TeamRole.NEWCOMER or researcher_profile.academic_position in [AcademicStage.POSTDOC]:
                 def propose_topic_for_researcher(title: str, description: str, source: str, required_expertise: str, priority_level: str = "medium") -> str:
                     return propose_topic(researcher_name, title, description, source, required_expertise, priority_level)
                 
