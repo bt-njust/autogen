@@ -39,6 +39,14 @@ This enhanced example demonstrates how AutoGen can simulate realistic academic r
 - **Clean shutdown**: Proper runtime and client cleanup
 - **Loop prevention**: Agents don't respond to their own messages
 
+### Enhanced Logging and Observability
+- **AutoGen Logging Framework**: Follows AutoGen's best practices for trace and event logging
+- **Structured Event Logging**: Machine-readable JSON events for collaboration tracking
+- **OpenTelemetry Integration**: Distributed tracing support with graceful fallback
+- **Agent-Level Tracing**: Individual agent behavior and message handling observation
+- **Collaboration Analytics**: Detailed tracking of proposals, discussions, and assignments
+- **File and Console Output**: Configurable logging destinations for debugging and production
+
 ### Valid Researcher Names
 All researcher names use only valid characters (numbers, '_', '-'):
 - `Prof_Chen_001` (Professor, Leader)
@@ -104,6 +112,101 @@ base_url = https://your-api-endpoint.com/v1
 api_key = your-api-key-here
 ```
 
+## Enhanced Logging and Telemetry
+
+### Logging Framework
+The simulation now includes comprehensive logging following AutoGen's best practices:
+
+```bash
+# Enable detailed logging
+python main.py --verbose
+
+# Test logging functionality
+python test_logging_standalone.py
+```
+
+#### Trace Logging (Human-Readable)
+- Agent creation and initialization
+- Topic proposal and discussion flow
+- Message handling and processing
+- Error conditions and warnings
+- Debug information for development
+
+#### Structured Event Logging (Machine-Readable JSON)
+- `agent_created`: Agent instantiation with role and profile
+- `topic_proposed`: New topic suggestions with metadata
+- `topic_discussed`: Participant feedback and assessments
+- `topic_assigned`: Leadership assignment decisions
+- `message_response`: Agent communication tracking
+- `simulation_completed`: Final results and analytics
+
+### OpenTelemetry Integration
+
+#### Installation
+```bash
+# For full telemetry support
+pip install opentelemetry-sdk>=1.34.1
+
+# Optional: for production export
+pip install opentelemetry-exporter-otlp-proto-grpc
+# OR
+pip install opentelemetry-exporter-otlp-proto-http
+```
+
+#### Features
+- **Service Identification**: Proper resource configuration
+- **Agent Tracing**: Creation and invocation spans
+- **Message Tracing**: Communication flow observation
+- **GenAI Conventions**: Following OpenTelemetry semantic conventions
+- **Console Export**: Immediate span visibility for demos
+- **Graceful Fallback**: Works without SDK installed
+
+#### Telemetry Spans
+- `create_agent`: Agent instantiation with role attributes
+- `invoke_agent`: Message handling with context
+- Custom spans for collaboration phases and tool usage
+
+### Log Analysis
+Log files contain both human-readable trace logs and machine-readable JSON events:
+
+```bash
+# View collaboration log
+tail -f collaboration_v2.log
+
+# Parse structured events
+grep "event_type" collaboration_v2.log | jq .
+```
+
+## Usage
+
+### Quick Demo (No API Key Required)
+```bash
+python demo.py
+```
+
+### Full Simulation
+```bash
+# With default configuration
+python main.py
+
+# With custom configuration
+python main.py --config-file your_config.ini --config-section your_section
+
+# With verbose logging
+python main.py --verbose
+
+# With custom phase rounds
+python main.py --num-rounds 2
+```
+
+### Configuration File Format
+Create a `.server_deployed_LLMs` file:
+```ini
+[ali_official]
+base_url = https://your-api-endpoint.com/v1
+api_key = your-api-key-here
+```
+
 ## Key Improvements Over Original Version
 
 ### 1. Enhanced Role System
@@ -137,6 +240,14 @@ api_key = your-api-key-here
 - Years in team affecting behavior
 - Position-appropriate proposal patterns
 - Assignment delegation from leaders
+
+### 7. Enhanced Logging and Observability
+- AutoGen-compliant logging framework with trace and event loggers
+- Structured JSON event logging for machine analysis
+- OpenTelemetry integration with graceful fallback
+- Agent-level tracing with role and position attributes
+- Comprehensive collaboration event tracking
+- File and console logging for debugging and production use
 
 ## Example Output
 
