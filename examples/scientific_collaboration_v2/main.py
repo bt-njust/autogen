@@ -33,7 +33,11 @@ from autogen_core import (
     SingleThreadedAgentRuntime,
     default_subscription,
     message_handler,
+    EVENT_LOGGER_NAME,
+    TRACE_LOGGER_NAME,
 )
+from autogen_core.logging import LLMCallEvent, ToolCallEvent
+from autogen_core._telemetry import trace_create_agent_span, trace_invoke_agent_span
 from autogen_core.model_context import BufferedChatCompletionContext, ChatCompletionContext
 from autogen_core.models import (
     ChatCompletionClient,
@@ -46,6 +50,18 @@ from autogen_core.tool_agent import ToolAgent, tool_agent_caller_loop
 from autogen_core.tools import FunctionTool, Tool, ToolSchema
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from pydantic import BaseModel
+import json
+
+# OpenTelemetry imports for tracing
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    TELEMETRY_AVAILABLE = True
+except ImportError:
+    TELEMETRY_AVAILABLE = False
+    print("⚠️ OpenTelemetry SDK not available. Install with: pip install opentelemetry-sdk")
 
 
 class TeamRole(Enum):
@@ -173,6 +189,68 @@ class CollaborationState:
 # Global collaboration state
 collaboration_state = CollaborationState()
 
+def log_structured_event(logger, event_data: dict) -> None:
+    """Helper function to log structured events as JSON strings."""
+    logger.info(json.dumps(event_data))
+
+# Enhanced logging setup
+def setup_enhanced_logging(verbose: bool = False, log_file: str = "collaboration_v2.log") -> None:
+    """Set up enhanced logging following AutoGen's logging best practices."""
+    # Configure basic logging
+    if verbose:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    else:
+        logging.basicConfig(level=logging.WARNING)
+    
+    # Set up trace logging for debugging
+    trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
+    trace_handler = logging.StreamHandler()
+    trace_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+    trace_logger.addHandler(trace_handler)
+    trace_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    
+    # Set up structured event logging
+    event_logger = logging.getLogger(EVENT_LOGGER_NAME)
+    event_handler = logging.StreamHandler()
+    event_handler.setLevel(logging.INFO)
+    event_logger.addHandler(event_handler)
+    event_logger.setLevel(logging.INFO)
+    
+    # Add file logging for debugging
+    if verbose:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter)
+        
+        trace_logger.addHandler(file_handler)
+        event_logger.addHandler(file_handler)
+        logging.getLogger("autogen_core").addHandler(file_handler)
+        logging.getLogger("autogen_core").setLevel(logging.DEBUG)
+
+def configure_telemetry() -> Optional[trace.TracerProvider]:
+    """Configure OpenTelemetry tracing for the collaboration simulation."""
+    if not TELEMETRY_AVAILABLE:
+        return None
+    
+    # Create tracer provider with service identification
+    tracer_provider = TracerProvider(
+        resource=Resource({
+            "service.name": "autogen-scientific-collaboration-v2",
+            "service.version": "2.0.0",
+            "component": "collaboration-simulation"
+        })
+    )
+    
+    # Add console exporter for demo purposes
+    console_span_processor = BatchSpanProcessor(ConsoleSpanExporter())
+    tracer_provider.add_span_processor(console_span_processor)
+    
+    # Set as global tracer provider
+    trace.set_tracer_provider(tracer_provider)
+    
+    return tracer_provider
+
 
 def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official") -> OpenAIChatCompletionClient:
     """Create model client using configparser approach from the provided configuration."""
@@ -229,13 +307,21 @@ def propose_topic(
     priority_level: Annotated[str, "Priority level: high, medium, low"] = "medium",
 ) -> Annotated[str, "Result of the topic proposal"]:
     """Propose a new research topic for collaboration."""
+    # Enhanced logging
+    trace_logger = logging.getLogger(TRACE_LOGGER_NAME + ".collaboration")
+    event_logger = logging.getLogger(EVENT_LOGGER_NAME + ".collaboration")
+    
+    trace_logger.debug(f"Topic proposal initiated by {researcher_name}: {title}")
+    
     # Check if we've reached the maximum number of topics
     if len(collaboration_state.topics) >= collaboration_state.max_topics:
+        trace_logger.warning(f"Topic proposal rejected - maximum limit reached: {collaboration_state.max_topics}")
         return f"Cannot propose new topic '{title}'. Maximum topic limit ({collaboration_state.max_topics}) has been reached."
     
     try:
         topic_source = TopicSource(source.lower())
     except ValueError:
+        trace_logger.error(f"Invalid topic source provided: {source}")
         return f"Invalid topic source '{source}'. Must be one of: {', '.join([s.value for s in TopicSource])}"
         
     expertise_list = [exp.strip() for exp in required_expertise.split(",")]
@@ -252,9 +338,24 @@ def propose_topic(
     topic_id = collaboration_state.add_topic(topic)
     
     if topic_id is None:
+        trace_logger.warning("Topic proposal failed - maximum limit reached during addition")
         return f"Cannot propose new topic '{title}'. Maximum topic limit has been reached."
     
     remaining_slots = collaboration_state.get_remaining_topic_slots()
+    
+    # Structured event logging for topic proposal
+    log_structured_event(event_logger, {
+        "event_type": "topic_proposed",
+        "researcher": researcher_name,
+        "topic_id": topic_id,
+        "title": title,
+        "source": topic_source.value,
+        "priority": priority_level,
+        "required_expertise": expertise_list,
+        "remaining_slots": remaining_slots
+    })
+    
+    trace_logger.info(f"Topic successfully proposed: {topic_id} by {researcher_name}")
     
     print(f"\n🔬 NEW TOPIC PROPOSED by {researcher_name}")
     print(f"📋 Title: {title}")
@@ -276,13 +377,34 @@ def discuss_topic(
     reasoning: Annotated[str, "Reasoning for the assessment"],
 ) -> Annotated[str, "Result of the discussion input"]:
     """Provide discussion input for a research topic instead of voting."""
+    trace_logger = logging.getLogger(TRACE_LOGGER_NAME + ".collaboration")
+    event_logger = logging.getLogger(EVENT_LOGGER_NAME + ".collaboration")
+    
+    trace_logger.debug(f"Topic discussion initiated by {participant_name} for {topic_id}")
+    
     if topic_id not in collaboration_state.topics:
+        trace_logger.error(f"Discussion attempted for non-existent topic: {topic_id}")
         return f"Topic {topic_id} does not exist."
         
     topic = collaboration_state.topics[topic_id]
     
     # Get participant profile for context
     participant_profile = collaboration_state.researchers.get(participant_name)
+    
+    # Log structured discussion event
+    log_structured_event(event_logger, {
+        "event_type": "topic_discussed",
+        "participant": participant_name,
+        "topic_id": topic_id,
+        "topic_title": topic.title,
+        "interest_level": interest_level,
+        "contribution_level": contribution_level,
+        "reasoning": reasoning,
+        "participant_role": participant_profile.team_role.value if participant_profile else "unknown",
+        "participant_position": participant_profile.academic_position.value if participant_profile else "unknown"
+    })
+    
+    trace_logger.info(f"Topic discussion completed: {participant_name} -> {topic_id} ({interest_level}/{contribution_level})")
     
     print(f"\n💬 TOPIC DISCUSSION by {participant_name}")
     print(f"📋 Topic: {topic.title}")
@@ -304,20 +426,41 @@ def assign_to_topic(
     reasoning: Annotated[str, "Reasoning for the assignment"],
 ) -> Annotated[str, "Result of the assignment"]:
     """Assign a team member to a topic (typically used by leaders)."""
+    trace_logger = logging.getLogger(TRACE_LOGGER_NAME + ".collaboration")
+    event_logger = logging.getLogger(EVENT_LOGGER_NAME + ".collaboration")
+    
+    trace_logger.debug(f"Topic assignment initiated by {assigner_name}: {assignee_name} -> {topic_id}")
+    
     if topic_id not in collaboration_state.topics:
+        trace_logger.error(f"Assignment attempted for non-existent topic: {topic_id}")
         return f"Topic {topic_id} does not exist."
         
     if assignee_name not in collaboration_state.researchers:
+        trace_logger.error(f"Assignment attempted for non-existent researcher: {assignee_name}")
         return f"Researcher {assignee_name} not found."
         
     assigner_profile = collaboration_state.researchers.get(assigner_name)
     if assigner_profile and assigner_profile.team_role not in [TeamRole.LEADER, TeamRole.CO_LEADER]:
+        trace_logger.warning(f"Unauthorized assignment attempt by {assigner_name} (role: {assigner_profile.team_role.value})")
         return f"Only leaders can make topic assignments."
         
     topic = collaboration_state.topics[topic_id]
     
     if assignee_name not in topic.assigned_members:
         topic.assigned_members.append(assignee_name)
+    
+    # Log structured assignment event
+    log_structured_event(event_logger, {
+        "event_type": "topic_assigned",
+        "assigner": assigner_name,
+        "assignee": assignee_name,
+        "topic_id": topic_id,
+        "topic_title": topic.title,
+        "reasoning": reasoning,
+        "all_assigned_members": topic.assigned_members
+    })
+    
+    trace_logger.info(f"Topic assignment completed: {assignee_name} assigned to {topic_id} by {assigner_name}")
     
     print(f"\n📋 TOPIC ASSIGNMENT by {assigner_name}")
     print(f"📝 Topic: {topic.title}")
@@ -410,14 +553,34 @@ class ResearcherAgent(RoutedAgent):
         self._model_context = model_context
         self._tool_schema = tool_schema
         self._tool_agent_id = AgentId(tool_agent_type, self.id.key) # Agent ID uniquely identifies an agent instance within an agent runtime – including distributed runtime. It is the “address” of the agent instance for receiving messages. It has two components: agent type and agent key. The agent type is not an agent class. It associates an agent with a specific factory function, which produces instances of agents of the same agent type. For example, different factory functions can produce the same agent class but with different constructor parameters. The agent key is an instance identifier for the given agent type. Agent IDs can be converted to and from strings. the format of this string is:"Agent_Type/Agent_Key" --> this is why you found 'Researcher_Prof_Chen_001/default' in the logs (does this mean every agent has a agent type?)
-        # In a multi-agent application, agent types are typically defined directly by the application, i.e., they are defined in the application code. On the other hand, agent keys are typically generated given messages delivered to the agents, i.e., they are defined by the application data.
-        # Because the runtime manages the lifecycle of agents, an AgentId is only used to communicate with the agent or retrieve its metadata (e.g., description).
+
         self._message_count = 0  # Track messages to prevent endless loops
         self._max_messages_per_round = 5
+        
+        # Enhanced logging setup
+        self._trace_logger = logging.getLogger(TRACE_LOGGER_NAME + f".agent.{profile.name}")
+        self._event_logger = logging.getLogger(EVENT_LOGGER_NAME + f".agent.{profile.name}")
+        
+        # Set up telemetry tracer
+        self._tracer = None
+        if TELEMETRY_AVAILABLE:
+            self._tracer = trace.get_tracer(f"researcher-agent-{profile.name}")
         
         # Create system message with enhanced researcher's profile
         system_prompt = self._create_system_prompt()
         self._system_messages: List[LLMMessage] = [SystemMessage(content=system_prompt)]
+        
+        # Log agent creation
+        self._trace_logger.info(f"Researcher agent created: {profile.name} ({profile.team_role.value}, {profile.academic_position.value})")
+        log_structured_event(self._event_logger, {
+            "event_type": "agent_created",
+            "agent_name": profile.name,
+            "team_role": profile.team_role.value,
+            "academic_position": profile.academic_position.value,
+            "institution": profile.institution,
+            "expertise": profile.expertise,
+            "years_in_team": profile.years_in_team
+        })
         
     def _create_system_prompt(self) -> str:
         """Create a system prompt based on the researcher's enhanced profile."""
@@ -488,17 +651,50 @@ Use the available tools to:
 
     @message_handler
     async def handle_message(self, message: CollaborationMessage, ctx: MessageContext) -> None:
-        """Handle incoming collaboration messages with loop prevention."""
+        """Handle incoming collaboration messages with loop prevention and telemetry."""
         # Prevent endless loops - check if message is from self
         if message.sender == self.profile.name:
             return
             
         # Limit messages per round to prevent overwhelming
         if self._message_count >= self._max_messages_per_round:
+            self._trace_logger.debug(f"Message limit reached for {self.profile.name} (round {collaboration_state.discussion_round})")
             return
             
         self._message_count += 1
         
+        # Log message handling start
+        self._trace_logger.debug(f"Handling message from {message.sender}: {message.message_type}")
+        
+        # Use telemetry tracing if available
+        if self._tracer and TELEMETRY_AVAILABLE:
+            with trace_invoke_agent_span(
+                agent_name=self.profile.name,
+                tracer=self._tracer,
+                agent_id=str(self.id),
+                agent_description=f"{self.profile.team_role.value} - {self.profile.academic_position.value}"
+            ) as span:
+                await self._process_message_with_tracing(message, ctx, span)
+        else:
+            await self._process_message_without_tracing(message, ctx)
+    
+    async def _process_message_with_tracing(self, message: CollaborationMessage, ctx: MessageContext, span) -> None:
+        """Process message with telemetry tracing."""
+        # Add span attributes
+        span.set_attribute("message.sender", message.sender)
+        span.set_attribute("message.type", message.message_type)
+        span.set_attribute("message.round", message.round_number)
+        span.set_attribute("agent.role", self.profile.team_role.value)
+        span.set_attribute("agent.position", self.profile.academic_position.value)
+        
+        await self._process_message_core(message, ctx)
+    
+    async def _process_message_without_tracing(self, message: CollaborationMessage, ctx: MessageContext) -> None:
+        """Process message without telemetry tracing."""
+        await self._process_message_core(message, ctx)
+    
+    async def _process_message_core(self, message: CollaborationMessage, ctx: MessageContext) -> None:
+        """Core message processing logic."""
         # Add the message to model context
         await self._model_context.add_message(
             UserMessage(content=f"[{message.message_type.upper()}] {message.sender}: {message.content}", 
@@ -519,9 +715,11 @@ Use the available tools to:
                 timeout=30.0  # 30 second timeout to prevent hanging
             )
         except asyncio.TimeoutError:
+            self._trace_logger.warning(f"{self.profile.name} response timed out")
             print(f"⚠️ {self.profile.name} response timed out")
             return
         except Exception as e:
+            self._trace_logger.error(f"{self.profile.name} encountered error: {e}")
             print(f"⚠️ {self.profile.name} encountered error: {e}")
             return
         
@@ -537,6 +735,18 @@ Use the available tools to:
                 message_type="discussion",
                 round_number=collaboration_state.discussion_round
             )
+            
+            # Log response generation
+            log_structured_event(self._event_logger, {
+                "event_type": "message_response",
+                "agent_name": self.profile.name,
+                "response_to": message.sender,
+                "message_type": message.message_type,
+                "round_number": collaboration_state.discussion_round,
+                "response_length": len(response.content)
+            })
+            
+            self._trace_logger.debug(f"Publishing response from {self.profile.name}")
             await self.publish_message(response, DefaultTopicId())
     
     def reset_message_count(self):
@@ -853,11 +1063,32 @@ async def main(config_file: str = ".server_deployed_LLMs", config_section: str =
     print("• Discussion-based consensus (no voting)")
     print("• Topic sources and assignment mechanisms")
     print("• Improved asyncio handling and termination conditions")
+    print("• Enhanced logging and OpenTelemetry tracing")
     print()
     
-    # Initialize runtime and model
-    runtime = SingleThreadedAgentRuntime()
+    # Configure telemetry tracing
+    tracer_provider = configure_telemetry()
+    if tracer_provider:
+        print("✅ OpenTelemetry tracing configured successfully")
+    else:
+        print("⚠️ OpenTelemetry tracing not available")
+    
+    # Initialize runtime with telemetry support
+    runtime = SingleThreadedAgentRuntime(tracer_provider=tracer_provider)
     model_client = create_model_client_from_config(config_file, config_section)
+    
+    # Enhanced logging
+    trace_logger = logging.getLogger(TRACE_LOGGER_NAME + ".main")
+    event_logger = logging.getLogger(EVENT_LOGGER_NAME + ".main")
+    
+    trace_logger.info("Starting scientific collaboration simulation v2")
+    log_structured_event(event_logger, {
+        "event_type": "simulation_started",
+        "config_file": config_file,
+        "config_section": config_section,
+        "max_rounds": num_rounds,
+        "telemetry_enabled": tracer_provider is not None
+    })
     
     # Set up the collaboration
     await setup_collaboration(runtime, model_client)
@@ -916,6 +1147,7 @@ async def main(config_file: str = ".server_deployed_LLMs", config_section: str =
         assigned_topics = [topic for topic in collaboration_state.topics.values() if topic.assigned_members]
         if assigned_topics:
             print("\n🏆 FINAL TOPIC ASSIGNMENTS:")
+            assignment_summary = []
             for topic in assigned_topics:
                 print(f"📋 {topic.title}")
                 print(f"   👤 Proposed by: {topic.proposer}")
@@ -923,8 +1155,32 @@ async def main(config_file: str = ".server_deployed_LLMs", config_section: str =
                 print(f"   👥 Assigned to: {', '.join(topic.assigned_members)}")
                 print(f"   ⚡ Priority: {topic.priority_level}")
                 print()
+                assignment_summary.append({
+                    "title": topic.title,
+                    "proposer": topic.proposer,
+                    "source": topic.source.value,
+                    "assigned_members": topic.assigned_members,
+                    "priority": topic.priority_level
+                })
+            
+            # Log final results
+            log_structured_event(event_logger, {
+                "event_type": "simulation_completed",
+                "total_topics_proposed": len(collaboration_state.topics),
+                "topics_assigned": len(assigned_topics),
+                "final_assignments": assignment_summary,
+                "participants": researcher_names
+            })
         else:
             print("\n📝 No topics were assigned during this collaboration.")
+            log_structured_event(event_logger, {
+                "event_type": "simulation_completed",
+                "total_topics_proposed": len(collaboration_state.topics),
+                "topics_assigned": 0,
+                "participants": researcher_names
+            })
+        
+        trace_logger.info("Scientific collaboration simulation completed successfully")
                 
     except KeyboardInterrupt:
         print("\n⚠️ Collaboration interrupted by user")
@@ -961,11 +1217,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     
-    if args.verbose:
-        logging.basicConfig(level=logging.WARNING)
-        logging.getLogger("autogen_core").setLevel(logging.DEBUG)
-        handler = logging.FileHandler("collaboration_v2.log")
-        logging.getLogger("autogen_core").addHandler(handler)
+    # Set up enhanced logging
+    setup_enhanced_logging(verbose=args.verbose, log_file="collaboration_v2.log")
 
     try:
         asyncio.run(main(args.config_file, args.config_section, args.num_rounds))
