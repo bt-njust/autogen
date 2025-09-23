@@ -180,7 +180,7 @@ class CollaborationState:
 collaboration_state = CollaborationState()
 
 
-def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official") -> OpenAIChatCompletionClient:
+def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official", model_name: str='qwen-plus') -> OpenAIChatCompletionClient:
     """Create model client using configparser approach from the provided configuration."""
     config = configparser.ConfigParser()
     
@@ -217,7 +217,7 @@ def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", 
     }
 
     model_client = OpenAIChatCompletionClient(
-        model="qwen-plus",
+        model=model_name,
         base_url=base_url,
         api_key=api_key,
         model_info=model_info
@@ -422,7 +422,7 @@ class ResearcherAgent(RoutedAgent):
         tool_schema: List[ToolSchema],
         tool_agent_type: str,
     ) -> None:
-        super().__init__(description=f"Researcher: {profile.name}")
+        super().__init__(description=f"A Researcher Agent: {profile.name}, {profile.team_role}, {profile.academic_stage}")
         self.profile = profile
         self._model_client = model_client
         self._model_context = model_context
