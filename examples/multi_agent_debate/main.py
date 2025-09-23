@@ -22,7 +22,6 @@ from autogen_core.models import (
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 
 import configparser
-from enum import Enum
 from pathlib import Path
 
 
@@ -214,75 +213,82 @@ class MathAggregator(RoutedAgent):
             print(f"{'-'*80}\nAggregator {self.id} publishes final answer:\n{majority_answer}")
 
 
-runtime = SingleThreadedAgentRuntime()
+async def main():
+    runtime = SingleThreadedAgentRuntime()
 
-# model_client = OpenAIChatCompletionClient(model="gpt-4o-mini")
-model_client = create_model_client_from_config(config_section='zhipu_glm', model_name='glm-4.5')
+    # use GLM API
+    model_client = create_model_client_from_config(config_section='zhipu_glm', model_name='glm-4.5')
+    # use qwen API
+    # model_client = create_model_client_from_config()
 
-await MathSolver.register(
-    runtime,
-    "MathSolverA",
-    lambda: MathSolver(
-        model_client=model_client,
-        topic_type="MathSolverA",
-        num_neighbors=2,
-        max_round=3,
-    ),
-)
-await MathSolver.register(
-    runtime,
-    "MathSolverB",
-    lambda: MathSolver(
-        model_client=model_client,
-        topic_type="MathSolverB",
-        num_neighbors=2,
-        max_round=3,
-    ),
-)
-await MathSolver.register(
-    runtime,
-    "MathSolverC",
-    lambda: MathSolver(
-        model_client=model_client,
-        topic_type="MathSolverC",
-        num_neighbors=2,
-        max_round=3,
-    ),
-)
-await MathSolver.register(
-    runtime,
-    "MathSolverD",
-    lambda: MathSolver(
-        model_client=model_client,
-        topic_type="MathSolverD",
-        num_neighbors=2,
-        max_round=3,
-    ),
-)
-await MathAggregator.register(runtime, "MathAggregator", lambda: MathAggregator(num_solvers=4))
+    await MathSolver.register(
+        runtime,
+        "MathSolverA",
+        lambda: MathSolver(
+            model_client=model_client,
+            topic_type="MathSolverA",
+            num_neighbors=2,
+            max_round=3,
+        ),
+    )
+    await MathSolver.register(
+        runtime,
+        "MathSolverB",
+        lambda: MathSolver(
+            model_client=model_client,
+            topic_type="MathSolverB",
+            num_neighbors=2,
+            max_round=3,
+        ),
+    )
+    await MathSolver.register(
+        runtime,
+        "MathSolverC",
+        lambda: MathSolver(
+            model_client=model_client,
+            topic_type="MathSolverC",
+            num_neighbors=2,
+            max_round=3,
+        ),
+    )
+    await MathSolver.register(
+        runtime,
+        "MathSolverD",
+        lambda: MathSolver(
+            model_client=model_client,
+            topic_type="MathSolverD",
+            num_neighbors=2,
+            max_round=3,
+        ),
+    )
+    await MathAggregator.register(runtime, "MathAggregator", lambda: MathAggregator(num_solvers=4))
 
-# Subscriptions for topic published to by MathSolverA.
-await runtime.add_subscription(TypeSubscription("MathSolverA", "MathSolverD"))
-await runtime.add_subscription(TypeSubscription("MathSolverA", "MathSolverB"))
+    # Subscriptions for topic published to by MathSolverA.
+    await runtime.add_subscription(TypeSubscription("MathSolverA", "MathSolverD"))
+    await runtime.add_subscription(TypeSubscription("MathSolverA", "MathSolverB"))
 
-# Subscriptions for topic published to by MathSolverB.
-await runtime.add_subscription(TypeSubscription("MathSolverB", "MathSolverA"))
-await runtime.add_subscription(TypeSubscription("MathSolverB", "MathSolverC"))
+    # Subscriptions for topic published to by MathSolverB.
+    await runtime.add_subscription(TypeSubscription("MathSolverB", "MathSolverA"))
+    await runtime.add_subscription(TypeSubscription("MathSolverB", "MathSolverC"))
 
-# Subscriptions for topic published to by MathSolverC.
-await runtime.add_subscription(TypeSubscription("MathSolverC", "MathSolverB"))
-await runtime.add_subscription(TypeSubscription("MathSolverC", "MathSolverD"))
+    # Subscriptions for topic published to by MathSolverC.
+    await runtime.add_subscription(TypeSubscription("MathSolverC", "MathSolverB"))
+    await runtime.add_subscription(TypeSubscription("MathSolverC", "MathSolverD"))
 
-# Subscriptions for topic published to by MathSolverD.
-await runtime.add_subscription(TypeSubscription("MathSolverD", "MathSolverC"))
-await runtime.add_subscription(TypeSubscription("MathSolverD", "MathSolverA"))
+    # Subscriptions for topic published to by MathSolverD.
+    await runtime.add_subscription(TypeSubscription("MathSolverD", "MathSolverC"))
+    await runtime.add_subscription(TypeSubscription("MathSolverD", "MathSolverA"))
 
-# All solvers and the aggregator subscribe to the default topic.
+    # All solvers and the aggregator subscribe to the default topic.
 
-question = "Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?"
-runtime.start()
-await runtime.publish_message(Question(content=question), DefaultTopicId())
-# Wait for the runtime to stop when idle.
-await runtime.stop_when_idle()
-# Close the connection to the model client.
-await model_client.close()
+    question = "Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?"
+    runtime.start()
+    await runtime.publish_message(Question(content=question), DefaultTopicId())
+    # Wait for the runtime to stop when idle.
+    await runtime.stop_when_idle()
+    # Close the connection to the model client.
+    await model_client.close()
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())

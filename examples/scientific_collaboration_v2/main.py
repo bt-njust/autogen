@@ -37,7 +37,8 @@ from autogen_core import (
 from autogen_core.model_context import BufferedChatCompletionContext, ChatCompletionContext
 from autogen_core.models import (
     ChatCompletionClient,
-    LLMMessage,
+    LLMMessage, # LLMMessage is an Union of some other messages 
+    # LLMMessage = Annotated[Union[SystemMessage, UserMessage, AssistantMessage, FunctionExecutionResultMessage], Field(discriminator="type")]
     SystemMessage,
     UserMessage,
     ModelFamily,
