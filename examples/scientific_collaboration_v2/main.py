@@ -94,7 +94,7 @@ class ResearcherProfile:
     academic_stage: AcademicStage
     team_role: TeamRole
     expertise: List[str]
-    institution: str
+    institution: str # TODO: one researcher could have multiple affiliations
     research_interests: List[str]
     recent_publications: List[str]
     collaboration_history: List[CollaborationHistory] = field(default_factory=list)
@@ -119,9 +119,9 @@ class CollaborationMessage(BaseModel):
     """Message for collaboration discussions."""
     content: str
     sender: str
-    message_type: str  # "introduction", "proposal", "discussion", "consensus"
+    message_during_phase: str  # "introduction", "proposal", "discussion", "consensus"
     topic_id: Optional[str] = None
-    round_number: int = 0
+    round_number: int = 0 # TODO: what does this parameter do?
 
 
 class CollaborationState:
@@ -407,6 +407,8 @@ def get_collaboration_status() -> Annotated[str, "Current status of the collabor
     return status
 
 
+# TODO: another Moderator agent?
+
 # autogen doc: If your scenario allows all agents to publish and subscribe to all broadcasted messages, use DefaultTopicId and default_subscription() to decorate your agent classes.
 @default_subscription
 class ResearcherAgent(RoutedAgent):
@@ -499,7 +501,7 @@ IMPORTANT INTERACTION RULES:
 Use the available tools to:
 - Propose research topics (if appropriate for your role)
 - Discuss topics with interest and contribution levels
-- Make assignments (if you're a leader)
+- Make assignments (if you're a leader/co-leader)
 - Check current status and other participants' profiles"""
 
     @message_handler
@@ -517,7 +519,7 @@ Use the available tools to:
         
         # Add the message to model context
         await self._model_context.add_message(
-            UserMessage(content=f"[{message.message_type.upper()}] {message.sender}: {message.content}", 
+            UserMessage(content=f"[{message.message_during_phase.upper()}] {message.sender}: {message.content}", 
                        source=message.sender)
         )
         
@@ -550,7 +552,7 @@ Use the available tools to:
             response = CollaborationMessage(
                 content=messages[-1].content,
                 sender=self.profile.name,
-                message_type="discussion",
+                message_during_phase="discussion",
                 round_number=collaboration_state.discussion_round
             )
             await self.publish_message(response, DefaultTopicId())
@@ -835,7 +837,7 @@ async def run_collaboration_round(
         message = CollaborationMessage(
             content=prompt,
             sender="Moderator",
-            message_type=phase,
+            message_during_phase=phase,
             round_number=round_num
         )
         
