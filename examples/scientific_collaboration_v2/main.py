@@ -109,7 +109,7 @@ class ResearchTopic:
     description: str
     proposer: str
     source: TopicSource
-    required_expertise: List[str] = field(default_factory=list)
+    required_expertise: List[str] = field(default_factory=list) # Avoids a shared mutable default. Using default=[] would make all instances share the same list object.
     assigned_members: List[str] = field(default_factory=list)
     status: str = "proposed"  # proposed, discussed, accepted, declined
     priority_level: str = "medium"  # high, medium, low
@@ -297,9 +297,12 @@ def discuss_topic(
         print(f"👤 Role: {participant_profile.team_role.value} ({participant_profile.academic_stage.value})")
         print(f"📊 Current workload: {participant_profile.current_workload}")
     
+    # update topic status
+    topic.status = "discussed"
     return f"Discussed '{topic.title}'. Interest: {interest_level}, Contribution: {contribution_level}. {reasoning}"
 
 
+# NOTE: if need to check assignee's workload/expertise, can add that logic here; 
 def assign_to_topic(
     assigner_name: str,
     topic_id: Annotated[str, "ID of the topic"],
@@ -313,9 +316,10 @@ def assign_to_topic(
     if assignee_name not in collaboration_state.researchers:
         return f"Researcher {assignee_name} not found."
         
-    assigner_profile = collaboration_state.researchers.get(assigner_name)
-    if assigner_profile and assigner_profile.team_role not in [TeamRole.LEADER, TeamRole.CO_LEADER]:
-        return f"Only leaders can make topic assignments."
+    # will be checked in the agent's tool definition
+    # assigner_profile = collaboration_state.researchers.get(assigner_name)
+    # if assigner_profile and assigner_profile.team_role not in [TeamRole.LEADER, TeamRole.CO_LEADER]:
+    #     return f"Only leaders can make topic assignments."
         
     topic = collaboration_state.topics[topic_id]
     
@@ -328,9 +332,12 @@ def assign_to_topic(
     print(f"💭 Reasoning: {reasoning}")
     print(f"👥 All assigned members: {', '.join(topic.assigned_members)}")
     
+    # update topic status
+    topic.status = "accepted"
     return f"Successfully assigned {assignee_name} to '{topic.title}'. Reasoning: {reasoning}"
 
 
+# NOTE: since there are topic states: proposed, discussed, accepted, declined, below function just lists topics but does not include the states
 def get_current_topics() -> Annotated[str, "List of all proposed topics with their current status"]:
     """Get information about all currently proposed topics."""
     if not collaboration_state.topics:
