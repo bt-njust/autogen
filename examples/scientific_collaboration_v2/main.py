@@ -130,13 +130,16 @@ class CollaborationState:
     def __init__(self, max_topics: int = 6, max_rounds_per_phase: int = 3):
         self.researchers: Dict[str, ResearcherProfile] = {}
         self.topics: Dict[str, ResearchTopic] = {}
-        self.discussion_round = 0
-        self.consensus_reached = False
-        self.selected_topics: List[str] = []
+        self.discussion_round = 0 # TODO: this parameter is not used in the current implementation, and it seems to be redundant with phase_round_count, consider removing it; furthermore, this one could be used for ResearchTopic, each topic could have its own discussion_round attribute to track how many rounds it has been discussed
+        # first, search positions that used this parameter, then remove them
+        # second, remove this parameter
+        # third, update related logic to use phase_round_count instead
+        self.consensus_reached = False # TODO: not used at all
+        self.selected_topics: List[str] = [] # TODO: not used at all
         self.max_topics = max_topics
         self.max_rounds_per_phase = max_rounds_per_phase
         self.current_phase = ""
-        self.phase_round_count = 0
+        self.phase_round_count = 0 # QUESTION: what are expected to do in a round of a phase? is it just one message from each agent, or multiple messages until some condition is met?
         self.terminated = False
         
     def add_researcher(self, profile: ResearcherProfile):
@@ -283,6 +286,10 @@ def discuss_topic(
         return f"Topic {topic_id} does not exist."
         
     topic = collaboration_state.topics[topic_id]
+
+    # TODO: whether to discuss an "accepted" topic again?
+    # if topic.status == "accepted":
+    # 
     
     # Get participant profile for context
     participant_profile = collaboration_state.researchers.get(participant_name)
@@ -383,10 +390,9 @@ def get_researcher_profiles() -> Annotated[str, "Information about all researche
 def get_collaboration_status() -> Annotated[str, "Current status of the collaboration"]:
     """Get the current status of the collaboration process."""
     status = f"Collaboration Status:\n"
-    status += f"👥 Team members: {len(collaboration_state.researchers)}\n"
+    status += f"👥 Team size: {len(collaboration_state.researchers)}\n"
     status += f"📋 Topics proposed: {len(collaboration_state.topics)}/{collaboration_state.max_topics}\n"
     status += f"📊 Remaining topic slots: {collaboration_state.get_remaining_topic_slots()}\n"
-    status += f"🔄 Discussion round: {collaboration_state.discussion_round}\n"
     status += f"📍 Current phase: {collaboration_state.current_phase}\n"
     status += f"🔢 Phase round: {collaboration_state.phase_round_count}/{collaboration_state.max_rounds_per_phase}\n"
     
@@ -401,7 +407,7 @@ def get_collaboration_status() -> Annotated[str, "Current status of the collabor
     return status
 
 
-# If your scenario allows all agents to publish and subscribe to all broadcasted messages, use DefaultTopicId and default_subscription() to decorate your agent classes.
+# autogen doc: If your scenario allows all agents to publish and subscribe to all broadcasted messages, use DefaultTopicId and default_subscription() to decorate your agent classes.
 @default_subscription
 class ResearcherAgent(RoutedAgent):
     """Agent representing a researcher in the enhanced collaboration."""
@@ -419,7 +425,7 @@ class ResearcherAgent(RoutedAgent):
         self._model_client = model_client
         self._model_context = model_context
         self._tool_schema = tool_schema
-        self._tool_agent_id = AgentId(tool_agent_type, self.id.key) # Agent ID uniquely identifies an agent instance within an agent runtime – including distributed runtime. It is the “address” of the agent instance for receiving messages. It has two components: agent type and agent key. The agent type is not an agent class. It associates an agent with a specific factory function, which produces instances of agents of the same agent type. For example, different factory functions can produce the same agent class but with different constructor parameters. The agent key is an instance identifier for the given agent type. Agent IDs can be converted to and from strings. the format of this string is:"Agent_Type/Agent_Key" --> this is why you found 'Researcher_Prof_Chen_001/default' in the logs (does this mean every agent has a agent type?)
+        self._tool_agent_id = AgentId(tool_agent_type, self.id.key) # autogen doc: Agent ID uniquely identifies an agent instance within an agent runtime – including distributed runtime. It is the “address” of the agent instance for receiving messages. It has two components: agent type and agent key. The agent type is not an agent class. It associates an agent with a specific factory function, which produces instances of agents of the same agent type. For example, different factory functions can produce the same agent class but with different constructor parameters. The agent key is an instance identifier for the given agent type. Agent IDs can be converted to and from strings. the format of this string is:"Agent_Type/Agent_Key" --> this is why you found 'Researcher_Prof_Chen_001/default' in the logs (does this mean every agent has a agent type?)
         # In a multi-agent application, agent types are typically defined directly by the application, i.e., they are defined in the application code. On the other hand, agent keys are typically generated given messages delivered to the agents, i.e., they are defined by the application data.
         # Because the runtime manages the lifecycle of agents, an AgentId is only used to communicate with the agent or retrieve its metadata (e.g., description).
         self._message_count = 0  # Track messages to prevent endless loops
