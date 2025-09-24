@@ -105,9 +105,9 @@ class CollaborationMessage(BaseModel):
     """Message for collaboration discussions."""
     content: str
     sender: str
-    message_during_phase: str  # "introduction", "proposal", "discussion", "consensus"
+    message_during_phase: Optional[str] = None  # "introduction", "proposal", "discussion", "consensus"
     topic_id: Optional[str] = None
-    round_number: int = 0 # TODO: what does this parameter do?
+    round_number: Optional[int] = None # TODO: what does this parameter do?
 
 
 class CollaborationState:
@@ -165,6 +165,134 @@ class CollaborationState:
 # Global collaboration state
 collaboration_state = CollaborationState()
 
+# Hard-coded researcher profiles for direct lookup (without using collaboration_state)
+HARDCODED_RESEARCHER_PROFILES: Dict[str, ResearcherProfile] = {
+    "Prof_Chen_001": ResearcherProfile(
+        name="Prof_Chen_001",
+        academic_stage=AcademicStage.PROFESSOR,
+        team_role=TeamRole.LEADER,
+        expertise=["Machine Learning", "Deep Learning", "Computer Vision"],
+        institution="MIT",
+        research_interests=["Multimodal AI", "Federated Learning", "AI Safety"],
+        recent_publications=[
+            "Federated Learning for Computer Vision: A Survey (2023)",
+            "Robust Multimodal AI Systems (2023)",
+            "Privacy-Preserving Deep Learning (2022)"
+        ],
+        collaboration_history=[
+            CollaborationHistory(["Dr_Wilson_002"], "Privacy-Preserving ML", "3 joint publications", 2022),
+            CollaborationHistory(["Dr_Garcia_003", "Dr_Kim_004"], "Federated AI Systems", "NSF grant awarded", 2021)
+        ],
+        years_in_team=5,
+        current_workload="heavy"
+    ),
+    "Dr_Wilson_002": ResearcherProfile(
+        name="Dr_Wilson_002",
+        academic_stage=AcademicStage.ASSOCIATE_PROFESSOR,
+        team_role=TeamRole.CO_LEADER,
+        expertise=["Data Science", "Statistical Analysis", "Big Data Analytics"],
+        institution="Stanford University",
+        research_interests=["Healthcare Analytics", "Social Media Analysis", "Ethical AI"],
+        recent_publications=[
+            "Ethical Considerations in Healthcare AI (2023)",
+            "Large-Scale Social Media Sentiment Analysis (2023)",
+            "Statistical Methods for Biased Data (2022)"
+        ],
+        collaboration_history=[
+            CollaborationHistory(["Prof_Chen_001"], "Privacy-Preserving ML", "3 joint publications", 2022),
+        ],
+        years_in_team=4,
+        current_workload="moderate"
+    ),
+    "Dr_Garcia_003": ResearcherProfile(
+        name="Dr_Garcia_003",
+        academic_stage=AcademicStage.ASSISTANT_PROFESSOR,
+        team_role=TeamRole.INCUMBENT,
+        expertise=["Human-Computer Interaction", "UX Research", "Accessibility"],
+        institution="UC Berkeley",
+        research_interests=["AI-Human Collaboration", "Accessible AI", "Inclusive Design"],
+        recent_publications=[
+            "Designing Inclusive AI Interfaces (2023)",
+            "User Trust in AI Systems (2023)",
+            "Accessibility in Machine Learning Tools (2022)"
+        ],
+        collaboration_history=[
+            CollaborationHistory(["Prof_Chen_001", "Dr_Kim_004"], "Federated AI Systems", "NSF grant awarded", 2021),
+        ],
+        years_in_team=3,
+        current_workload="moderate"
+    ),
+    "Dr_Kim_004": ResearcherProfile(
+        name="Dr_Kim_004",
+        academic_stage=AcademicStage.POSTDOC,
+        team_role=TeamRole.INCUMBENT,
+        expertise=["Computational Biology", "Bioinformatics", "Systems Biology"],
+        institution="Harvard Medical School",
+        research_interests=["AI for Drug Discovery", "Genomics", "Personalized Medicine"],
+        recent_publications=[
+            "AI-Driven Drug Discovery Platforms (2023)",
+            "Genomic Data Analysis with Deep Learning (2023)",
+            "Personalized Medicine through AI (2022)"
+        ],
+        collaboration_history=[
+            CollaborationHistory(["Prof_Chen_001", "Dr_Garcia_003"], "Federated AI Systems", "NSF grant awarded", 2021),
+        ],
+        years_in_team=2,
+        current_workload="light"
+    ),
+    "PhD_Zhang_005": ResearcherProfile(
+        name="PhD_Zhang_005",
+        academic_stage=AcademicStage.PHD_CANDIDATE,
+        team_role=TeamRole.NEWCOMER,
+        expertise=["Natural Language Processing", "Text Mining"],
+        institution="MIT",
+        research_interests=["Conversational AI", "Language Models", "Text Analysis"],
+        recent_publications=[
+            "Advances in Conversational AI (2023)",
+            "Text Mining for Social Good (2023)"
+        ],
+        collaboration_history=[
+            CollaborationHistory(["Prof_Chen_001"], "AI Safety Research", "Conference paper", 2023),
+        ],
+        years_in_team=1,
+        current_workload="light"
+    ),
+    "Postdoc_Lee_006": ResearcherProfile(
+        name="Postdoc_Lee_006",
+        academic_stage=AcademicStage.POSTDOC,
+        team_role=TeamRole.NEWCOMER,
+        expertise=["Robotics", "Computer Vision", "AI Control"],
+        institution="Stanford University",
+        research_interests=["Autonomous Systems", "Robot Learning", "Vision-based Control"],
+        recent_publications=[
+            "Vision-based Robot Control (2023)",
+            "Autonomous Systems in Real Environments (2023)"
+        ],
+        collaboration_history=[
+            CollaborationHistory(["Dr_Wilson_002"], "Robotics Ethics", "Workshop paper", 2023),
+        ],
+        years_in_team=1,
+        current_workload="light"
+    ),
+}
+
+def select_researcher_profile(researcher_name: str) -> ResearcherProfile:
+    """Return the ResearcherProfile for the given name from a hard-coded mapping.
+    
+    Tries exact match first, then case-insensitive match. Raises KeyError if not found.
+    """
+    # Exact match
+    profile = HARDCODED_RESEARCHER_PROFILES.get(researcher_name)
+    if profile is not None:
+        return profile
+
+    # Case-insensitive fallback
+    lowered = researcher_name.lower()
+    for name, prof in HARDCODED_RESEARCHER_PROFILES.items():
+        if name.lower() == lowered:
+            return prof
+
+    raise KeyError(f"Researcher '{researcher_name}' not found.")
 
 def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official", model_name: str='qwen-plus') -> OpenAIChatCompletionClient:
     """Create model client using configparser approach from the provided configuration."""
@@ -394,6 +522,55 @@ def get_collaboration_status() -> Annotated[str, "Current status of the collabor
 
 
 # TODO: another Moderator agent?
+@default_subscription
+class ModeratorAgent(RoutedAgent):
+    """Agent to moderate the collaboration process."""
+    
+    def __init__(self,
+                 profile: ResearcherProfile,
+                 model_client: ChatCompletionClient) -> None:
+        super().__init__(description=f"{profile.name} as the Moderator Agent overseeing the collaboration process.")
+        self._round = 0
+        self._max_round = 3
+        self.profile = profile
+        self._model_client = model_client
+        
+        # Create system message with enhanced researcher's profile
+        system_prompt = self._create_system_prompt()
+        self._system_messages: List[LLMMessage] = [SystemMessage(content=system_prompt)]
+        
+    def _create_system_prompt(self) -> str:
+        """Create a system prompt based on the researcher's enhanced profile."""
+        collab_history = ""
+        if self.profile.collaboration_history:
+            collab_history = "\n\nPast Collaborations:\n"
+            for collab in self.profile.collaboration_history:
+                collab_history += f"- {collab.topic} with {', '.join(collab.collaborators)} ({collab.year}) - {collab.outcome}\n"
+        
+
+        return f"""
+            You are {self.profile.name}, the Moderator overseeing the collaboration process. Ensure orderly discussion, adherence to rules, and phase transitions. As the team leader, you take initiative in guiding discussions, making assignments, and ensuring consensus. Based on yours and team members background, you start by proposing a topic to team members.
+
+            EXPERTISE & INTERESTS:
+            - Expertise areas: {', '.join(self.profile.expertise)}
+            - Research interests: {', '.join(self.profile.research_interests)}
+
+            Recent publications:
+            {chr(10).join(f"- {pub}" for pub in self.profile.recent_publications)}
+            {collab_history}
+
+            IMPORTANT INTERACTION RULES:
+            - Keep responses focused and concise
+            - Use available tools appropriately based on your role
+            - Consider your workload when committing to topics
+
+            Use the available tools to:
+            - Propose research topics (if appropriate for your role)
+            - Discuss topics with interest and contribution levels
+            - Check current status and other participants' profiles"""
+
+    @message_handler
+    async def handle_message(self, message: CollaborationMessage, ctx: MessageContext) -> None:
 
 # autogen doc: If your scenario allows all agents to publish and subscribe to all broadcasted messages, use DefaultTopicId and default_subscription() to decorate your agent classes.
 @default_subscription
@@ -416,8 +593,8 @@ class ResearcherAgent(RoutedAgent):
         self._tool_agent_id = AgentId(tool_agent_type, self.id.key) # autogen doc: Agent ID uniquely identifies an agent instance within an agent runtime – including distributed runtime. It is the “address” of the agent instance for receiving messages. It has two components: agent type and agent key. The agent type is not an agent class. It associates an agent with a specific factory function, which produces instances of agents of the same agent type. For example, different factory functions can produce the same agent class but with different constructor parameters. The agent key is an instance identifier for the given agent type. Agent IDs can be converted to and from strings. the format of this string is:"Agent_Type/Agent_Key" --> this is why you found 'Researcher_Prof_Chen_001/default' in the logs (does this mean every agent has a agent type?)
         # In a multi-agent application, agent types are typically defined directly by the application, i.e., they are defined in the application code. On the other hand, agent keys are typically generated given messages delivered to the agents, i.e., they are defined by the application data.
         # Because the runtime manages the lifecycle of agents, an AgentId is only used to communicate with the agent or retrieve its metadata (e.g., description).
-        self._message_count = 0  # Track messages to prevent endless loops
-        self._max_messages_per_round = 5
+        self._round = 0  # Track messages to prevent endless loops
+        self._max_round = 3
         
         # Create system message with enhanced researcher's profile
         system_prompt = self._create_system_prompt()
@@ -498,10 +675,10 @@ Use the available tools to:
             return
             
         # Limit messages per round to prevent overwhelming
-        if self._message_count >= self._max_messages_per_round:
+        if self._round >= self._max_round:
             return
             
-        self._message_count += 1
+        self._round += 1
         
         # Add the message to model context
         await self._model_context.add_message(
@@ -545,7 +722,7 @@ Use the available tools to:
     
     def reset_message_count(self):
         """Reset message count for new round."""
-        self._message_count = 0
+        self._round = 0
 
 
 async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletionClient) -> None:
@@ -553,113 +730,7 @@ async def setup_collaboration(runtime: AgentRuntime, model_client: ChatCompletio
     
     # Define enhanced researcher profiles with valid names (numbers, '_', '-' only)
     researchers = [
-        ResearcherProfile(
-            name="Prof_Chen_001",
-            academic_stage=AcademicStage.PROFESSOR,
-            team_role=TeamRole.LEADER,
-            expertise=["Machine Learning", "Deep Learning", "Computer Vision"],
-            institution="MIT",
-            research_interests=["Multimodal AI", "Federated Learning", "AI Safety"],
-            recent_publications=[
-                "Federated Learning for Computer Vision: A Survey (2023)",
-                "Robust Multimodal AI Systems (2023)",
-                "Privacy-Preserving Deep Learning (2022)"
-            ],
-            collaboration_history=[
-                CollaborationHistory(["Dr_Wilson_002"], "Privacy-Preserving ML", "3 joint publications", 2022),
-                CollaborationHistory(["Dr_Garcia_003", "Dr_Kim_004"], "Federated AI Systems", "NSF grant awarded", 2021)
-            ],
-            years_in_team=5,
-            current_workload="heavy"
-        ),
-        ResearcherProfile(
-            name="Dr_Wilson_002",
-            academic_stage=AcademicStage.ASSOCIATE_PROFESSOR,
-            team_role=TeamRole.CO_LEADER,
-            expertise=["Data Science", "Statistical Analysis", "Big Data Analytics"],
-            institution="Stanford University",
-            research_interests=["Healthcare Analytics", "Social Media Analysis", "Ethical AI"],
-            recent_publications=[
-                "Ethical Considerations in Healthcare AI (2023)",
-                "Large-Scale Social Media Sentiment Analysis (2023)",
-                "Statistical Methods for Biased Data (2022)"
-            ],
-            collaboration_history=[
-                CollaborationHistory(["Prof_Chen_001"], "Privacy-Preserving ML", "3 joint publications", 2022),
-            ],
-            years_in_team=4,
-            current_workload="moderate"
-        ),
-        ResearcherProfile(
-            name="Dr_Garcia_003",
-            academic_stage=AcademicStage.ASSISTANT_PROFESSOR,
-            team_role=TeamRole.INCUMBENT,
-            expertise=["Human-Computer Interaction", "UX Research", "Accessibility"],
-            institution="UC Berkeley",
-            research_interests=["AI-Human Collaboration", "Accessible AI", "Inclusive Design"],
-            recent_publications=[
-                "Designing Inclusive AI Interfaces (2023)",
-                "User Trust in AI Systems (2023)",
-                "Accessibility in Machine Learning Tools (2022)"
-            ],
-            collaboration_history=[
-                CollaborationHistory(["Prof_Chen_001", "Dr_Kim_004"], "Federated AI Systems", "NSF grant awarded", 2021),
-            ],
-            years_in_team=3,
-            current_workload="moderate"
-        ),
-        ResearcherProfile(
-            name="Dr_Kim_004",
-            academic_stage=AcademicStage.POSTDOC,
-            team_role=TeamRole.INCUMBENT,
-            expertise=["Computational Biology", "Bioinformatics", "Systems Biology"],
-            institution="Harvard Medical School",
-            research_interests=["AI for Drug Discovery", "Genomics", "Personalized Medicine"],
-            recent_publications=[
-                "AI-Driven Drug Discovery Platforms (2023)",
-                "Genomic Data Analysis with Deep Learning (2023)",
-                "Personalized Medicine through AI (2022)"
-            ],
-            collaboration_history=[
-                CollaborationHistory(["Prof_Chen_001", "Dr_Garcia_003"], "Federated AI Systems", "NSF grant awarded", 2021),
-            ],
-            years_in_team=2,
-            current_workload="light"
-        ),
-        ResearcherProfile(
-            name="PhD_Zhang_005",
-            academic_stage=AcademicStage.PHD_CANDIDATE,
-            team_role=TeamRole.NEWCOMER,
-            expertise=["Natural Language Processing", "Text Mining"],
-            institution="MIT",
-            research_interests=["Conversational AI", "Language Models", "Text Analysis"],
-            recent_publications=[
-                "Advances in Conversational AI (2023)",
-                "Text Mining for Social Good (2023)"
-            ],
-            collaboration_history=[
-                CollaborationHistory(["Prof_Chen_001"], "AI Safety Research", "Conference paper", 2023),
-            ],
-            years_in_team=1,
-            current_workload="light"
-        ),
-        ResearcherProfile(
-            name="Postdoc_Lee_006",
-            academic_stage=AcademicStage.POSTDOC,
-            team_role=TeamRole.NEWCOMER,
-            expertise=["Robotics", "Computer Vision", "AI Control"],
-            institution="Stanford University",
-            research_interests=["Autonomous Systems", "Robot Learning", "Vision-based Control"],
-            recent_publications=[
-                "Vision-based Robot Control (2023)",
-                "Autonomous Systems in Real Environments (2023)"
-            ],
-            collaboration_history=[
-                CollaborationHistory(["Dr_Wilson_002"], "Robotics Ethics", "Workshop paper", 2023),
-            ],
-            years_in_team=1,
-            current_workload="light"
-        )
+        v for k,v in HARDCODED_RESEARCHER_PROFILES.items()
     ]
     
     # Add researchers to collaboration state
@@ -846,22 +917,16 @@ async def run_collaboration_round(
     return True
 
 
-async def main(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official", num_rounds: int = 3) -> None:
+async def main(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official", model_name: str = "qwen-plus", num_rounds: int = 3) -> None:
     """Main entry point for the enhanced scientific collaboration simulation."""
     
-    print("🧪 SCIENTIFIC COLLABORATION V2 SIMULATION")
+    print("🧪 SCIENTIFIC COLLABORATION V3 SIMULATION")
     print("=" * 60)
-    print("Enhanced academic research collaboration with:")
-    print("• Team roles: leader, co-leader, incumbent, newcomer")
-    print("• Academic stages: professor, associate prof, assistant prof, postdoc, PhD")
-    print("• Discussion-based consensus (no voting)")
-    print("• Topic sources and assignment mechanisms")
-    print("• Improved asyncio handling and termination conditions")
     print()
     
     # Initialize runtime and model
     runtime = SingleThreadedAgentRuntime()
-    model_client = create_model_client_from_config(config_file, config_section)
+    model_client = create_model_client_from_config(config_file, config_section, model_name)
     
     # Set up the collaboration
     await setup_collaboration(runtime, model_client)
@@ -961,6 +1026,9 @@ if __name__ == "__main__":
         "--config-section", type=str, help="Configuration section to use.", default="ali_official"
     )
     parser.add_argument(
+        "--model-name", type=str, help="Name of the model to use.", default="qwen-plus"
+    )
+    parser.add_argument(
         "--num-rounds", type=int, help="Maximum rounds per phase.", default=3
     )
     args = parser.parse_args()
@@ -968,11 +1036,11 @@ if __name__ == "__main__":
     if args.verbose:
         logging.basicConfig(level=logging.WARNING)
         logging.getLogger("autogen_core").setLevel(logging.DEBUG)
-        handler = logging.FileHandler("collaboration_v2.log")
+        handler = logging.FileHandler("collaboration_v3.log")
         logging.getLogger("autogen_core").addHandler(handler)
 
     try:
-        asyncio.run(main(args.config_file, args.config_section, args.num_rounds))
+        asyncio.run(main(args.config_file, args.config_section, args.model_name, args.num_rounds))
     except FileNotFoundError as e:
         print(f"❌ Error: {e}")
         print(f"Please ensure the configuration file '{args.config_file}' exists and contains the section '{args.config_section}'.")
