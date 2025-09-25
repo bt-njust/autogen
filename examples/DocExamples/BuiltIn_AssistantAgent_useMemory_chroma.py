@@ -1,3 +1,10 @@
+"""
+before using this example, please make sure you have installed chromadb package:
+uv pip install chromadb
+This also needs connections to huggingface to use sentence-transformers embedding model, please also install sentence-transformers package:
+uv pip install sentence-transformers
+
+"""
 import tempfile
 
 from autogen_agentchat.agents import AssistantAgent
