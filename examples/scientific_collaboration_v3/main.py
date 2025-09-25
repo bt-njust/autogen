@@ -26,6 +26,7 @@ from autogen_core.models import (
     # LLMMessage = Annotated[Union[SystemMessage, UserMessage, AssistantMessage, FunctionExecutionResultMessage], Field(discriminator="type")]
     SystemMessage,
     UserMessage,
+    AssistantMessage,
     ModelFamily,
 )
 from autogen_core.tool_agent import ToolAgent, tool_agent_caller_loop
@@ -294,6 +295,7 @@ def select_researcher_profile(researcher_name: str) -> ResearcherProfile:
 
     raise KeyError(f"Researcher '{researcher_name}' not found.")
 
+# autogen
 def create_model_client_from_config(config_file: str = ".server_deployed_LLMs", config_section: str = "ali_official", model_name: str='qwen-plus') -> OpenAIChatCompletionClient:
     """Create model client using configparser approach from the provided configuration."""
     config = configparser.ConfigParser()
@@ -538,6 +540,7 @@ class ModeratorAgent(RoutedAgent):
         # Create system message with enhanced researcher's profile
         system_prompt = self._create_system_prompt()
         self._system_messages: List[LLMMessage] = [SystemMessage(content=system_prompt)]
+        self._history: List[LLMMessage] = []
         
     def _create_system_prompt(self) -> str:
         """Create a system prompt based on the researcher's enhanced profile."""
@@ -571,6 +574,20 @@ class ModeratorAgent(RoutedAgent):
 
     @message_handler
     async def handle_message(self, message: CollaborationMessage, ctx: MessageContext) -> None:
+        self._history.append(UserMessage(content=message.content, source=message.sender))
+        resp = self._model_client.create(self._system_messages + self._history)
+        assert isinstance(resp.content, str)
+        self._history.append(AssistantMessage(content=resp.content), source=self.profile.name)
+        print(f"\n{'-'*80}🗣️ MODERATOR {self.profile.name}, ROUND {self._round}, RESPONDS:\n{resp.content}\n")
+
+        await self.publish_message(
+            CollaborationMessage(content=resp.content, sender=self.profile.name),
+            topic_id=DefaultTopicId()
+        )
+        self._round += 1
+        if self._round >= self._max_round:
+            print(f"⚠️ Moderator {self.profile.name} reached max rounds, stopping further responses.")
+            return
 
 # autogen doc: If your scenario allows all agents to publish and subscribe to all broadcasted messages, use DefaultTopicId and default_subscription() to decorate your agent classes.
 @default_subscription
@@ -581,16 +598,16 @@ class ResearcherAgent(RoutedAgent):
         self,
         profile: ResearcherProfile,
         model_client: ChatCompletionClient,
-        model_context: ChatCompletionContext,
-        tool_schema: List[ToolSchema],
-        tool_agent_type: str,
+        # model_context: ChatCompletionContext,
+        # tool_schema: List[ToolSchema],
+        # tool_agent_type: str,
     ) -> None:
         super().__init__(description=f"A Researcher Agent: {profile.name}, {profile.team_role}, {profile.academic_stage}")
         self.profile = profile
         self._model_client = model_client
-        self._model_context = model_context
-        self._tool_schema = tool_schema
-        self._tool_agent_id = AgentId(tool_agent_type, self.id.key) # autogen doc: Agent ID uniquely identifies an agent instance within an agent runtime – including distributed runtime. It is the “address” of the agent instance for receiving messages. It has two components: agent type and agent key. The agent type is not an agent class. It associates an agent with a specific factory function, which produces instances of agents of the same agent type. For example, different factory functions can produce the same agent class but with different constructor parameters. The agent key is an instance identifier for the given agent type. Agent IDs can be converted to and from strings. the format of this string is:"Agent_Type/Agent_Key" --> this is why you found 'Researcher_Prof_Chen_001/default' in the logs (does this mean every agent has a agent type?)
+        # self._model_context = model_context
+        # self._tool_schema = tool_schema
+        # self._tool_agent_id = AgentId(tool_agent_type, self.id.key) # autogen doc: Agent ID uniquely identifies an agent instance within an agent runtime – including distributed runtime. It is the “address” of the agent instance for receiving messages. It has two components: agent type and agent key. The agent type is not an agent class. It associates an agent with a specific factory function, which produces instances of agents of the same agent type. For example, different factory functions can produce the same agent class but with different constructor parameters. The agent key is an instance identifier for the given agent type. Agent IDs can be converted to and from strings. the format of this string is:"Agent_Type/Agent_Key" --> this is why you found 'Researcher_Prof_Chen_001/default' in the logs (does this mean every agent has a agent type?)
         # In a multi-agent application, agent types are typically defined directly by the application, i.e., they are defined in the application code. On the other hand, agent keys are typically generated given messages delivered to the agents, i.e., they are defined by the application data.
         # Because the runtime manages the lifecycle of agents, an AgentId is only used to communicate with the agent or retrieve its metadata (e.g., description).
         self._round = 0  # Track messages to prevent endless loops
@@ -599,6 +616,7 @@ class ResearcherAgent(RoutedAgent):
         # Create system message with enhanced researcher's profile
         system_prompt = self._create_system_prompt()
         self._system_messages: List[LLMMessage] = [SystemMessage(content=system_prompt)]
+        self._history: List[LLMMessage] = []
         
     def _create_system_prompt(self) -> str:
         """Create a system prompt based on the researcher's enhanced profile."""
@@ -608,71 +626,24 @@ class ResearcherAgent(RoutedAgent):
             for collab in self.profile.collaboration_history:
                 collab_history += f"- {collab.topic} with {', '.join(collab.collaborators)} ({collab.year}) - {collab.outcome}\n"
         
-        role_behavior = ""
-        if self.profile.team_role == TeamRole.LEADER:
-            role_behavior = "As the team leader, you take initiative in guiding discussions, making assignments, and ensuring consensus. You have authority to assign topics to team members based on their expertise and workload."
-        elif self.profile.team_role == TeamRole.CO_LEADER:
-            role_behavior = "As a co-leader, you share leadership responsibilities and help guide discussions. You can participate in assignment decisions and facilitate consensus building."
-        elif self.profile.team_role == TeamRole.INCUMBENT:
-            role_behavior = "As an established team member, you contribute expertise and insights based on your experience. You can propose topics and provide guidance to newer members."
-        elif self.profile.team_role == TeamRole.NEWCOMER:
-            role_behavior = "As a newcomer to the team, you may have limited knowledge about team dynamics but bring fresh perspectives. You might receive topic assignments from seniors rather than proposing topics yourself."
-
-        position_context = ""
-        if self.profile.academic_stage == AcademicStage.PROFESSOR:
-            position_context = "As a professor, you often have grant projects and can assign research directions to your team."
-        elif self.profile.academic_stage == AcademicStage.POSTDOC:
-            position_context = "As a postdoc, you have specialized skills and can take significant responsibility for research projects."
-        elif self.profile.academic_stage == AcademicStage.PHD_CANDIDATE:
-            position_context = "As a PhD candidate, you may propose topics for your dissertation or receive assignments from professors."
 
         return f"""You are {self.profile.name}, a {self.profile.academic_stage.value} from {self.profile.institution}.
 
-ROLE & POSITION:
-- Team role: {self.profile.team_role.value}
-- Academic stage: {self.profile.academic_stage.value}
-- Years in team: {self.profile.years_in_team}
-- Current workload: {self.profile.current_workload}
+            EXPERTISE & INTERESTS:
+            - Expertise areas: {', '.join(self.profile.expertise)}
+            - Research interests: {', '.join(self.profile.research_interests)}
 
-EXPERTISE & INTERESTS:
-- Expertise areas: {', '.join(self.profile.expertise)}
-- Research interests: {', '.join(self.profile.research_interests)}
+            Recent publications:
+            {chr(10).join(f"- {pub}" for pub in self.profile.recent_publications)}
+            {collab_history}
 
-Recent publications:
-{chr(10).join(f"- {pub}" for pub in self.profile.recent_publications)}
-{collab_history}
 
-BEHAVIORAL GUIDELINES:
-{role_behavior}
-
-{position_context}
-
-You are participating in a 4-phase scientific collaboration meeting:
-1. Introduction: Present yourself and your background
-2. Proposal: Propose research topics based on your role and position
-3. Discussion: Discuss topics, express interest levels, and assess contributions
-4. Consensus: Finalize topic assignments and next steps
-
-IMPORTANT INTERACTION RULES:
-- Do NOT send messages to yourself or create endless loops
-- Keep responses focused and concise
-- Use available tools appropriately based on your role
-- Consider your workload when committing to topics
-- Respect the team hierarchy and discussion flow
-- Limit your contributions to avoid overwhelming the discussion
-
-Use the available tools to:
-- Propose research topics (if appropriate for your role)
-- Discuss topics with interest and contribution levels
-- Make assignments (if you're a leader/co-leader)
-- Check current status and other participants' profiles"""
+            You are participating in a discussion to select research topics for collaboration.
+            """
 
     @message_handler
     async def handle_message(self, message: CollaborationMessage, ctx: MessageContext) -> None:
         """Handle incoming collaboration messages with loop prevention."""
-        # Prevent endless loops - check if message is from self
-        if message.sender == self.profile.name:
-            return
             
         # Limit messages per round to prevent overwhelming
         if self._round >= self._max_round:
