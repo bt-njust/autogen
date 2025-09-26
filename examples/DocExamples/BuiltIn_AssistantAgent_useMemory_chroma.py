@@ -4,6 +4,8 @@ uv pip install chromadb
 This also needs connections to huggingface to use sentence-transformers embedding model, please also install sentence-transformers package:
 uv pip install sentence-transformers
 
+# NOTE: using huggingface mirror: run with `HF_ENDPOINT=https://hf-mirror.com python examples/DocExamples/BuiltIn_AssistantAgent_useMemory_chroma.py`
+
 """
 import tempfile
 
@@ -32,6 +34,15 @@ async def get_weather(city: str, units: str = "imperial") -> str:
         return f"The weather in {city} is 23 °C and Sunny."
     else:
         return f"Sorry, I don't know the weather in {city}."
+
+# synthesized for tool test only
+async def get_recipe(dietary: str) -> str:
+    if dietary == "vegan":
+        return "Here is a vegan recipe: Vegan Buddha Bowl with Quinoa and Roasted Vegetables."
+    elif dietary == "vegetarian":
+        return "Here is a vegetarian recipe: Caprese Salad with Fresh Mozzarella and Basil."
+    else:
+        return "Here is a recipe: Grilled Chicken with Lemon and Herbs."
 
 async def main() -> None:
     # Use a temporary directory for ChromaDB persistence
@@ -80,6 +91,9 @@ async def main() -> None:
 
         stream = assistant_agent.run_stream(task="What is the weather in New York?")
         await Console(stream)
+
+        # resp = await assistant_agent._model_context.get_messages()
+        # print(f'      ==|| {resp}')
 
         await model_client.close()
         await chroma_user_memory.close()
